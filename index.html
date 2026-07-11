@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>OUTBREAK://PROTOCOL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ================= GAME CANVAS ================= -->
+<canvas id="game-canvas"></canvas>
+
+<!-- ================= HUD (hidden until game starts) ================= -->
+<div id="hud" class="hidden">
+  <div id="crosshair">
+    <span class="ch-dot"></span>
+    <span class="ch-line ch-top"></span>
+    <span class="ch-line ch-bottom"></span>
+    <span class="ch-line ch-left"></span>
+    <span class="ch-line ch-right"></span>
+  </div>
+
+  <div id="hit-marker"></div>
+  <div id="damage-vignette"></div>
+
+  <div id="hud-top-left">
+    <div class="hud-block">
+      <div class="hud-label">LEVEL</div>
+      <div id="level-value" class="hud-value">1</div>
+    </div>
+    <div class="xp-bar-wrap">
+      <div id="xp-bar-fill"></div>
+    </div>
+  </div>
+
+  <div id="hud-bottom-left">
+    <div class="stat-row">
+      <span class="stat-icon heart-icon">&#10084;</span>
+      <div class="bar-wrap"><div id="health-fill" class="bar-fill health"></div></div>
+      <span id="health-text" class="stat-text">100</span>
+    </div>
+  </div>
+
+  <div id="hud-bottom-right">
+    <div id="weapon-name">-</div>
+    <div id="ammo-counter"><span id="ammo-current">--</span><span class="ammo-sep">/</span><span id="ammo-reserve">--</span></div>
+    <div id="weapon-slots">
+      <div class="slot active" data-slot="1">1<span>PRI</span></div>
+      <div class="slot" data-slot="2">2<span>SEC</span></div>
+      <div class="slot" data-slot="3">3<span>MEL</span></div>
+    </div>
+  </div>
+
+  <div id="hud-top-right">
+    <div id="wave-info">
+      <div class="hud-label">HOSTILES</div>
+      <div id="zombie-count">0</div>
+    </div>
+  </div>
+
+  <div id="killfeed"></div>
+
+  <div id="interact-prompt" class="hidden">HOLD POSITION TO ACCESS CACHE <div id="loot-progress"><div id="loot-progress-fill"></div></div></div>
+
+  <div id="levelup-banner" class="hidden">
+    <div class="levelup-title">LEVEL UP</div>
+    <div id="levelup-choices"></div>
+  </div>
+</div>
+
+<!-- ================= MAIN MENU ================= -->
+<div id="menu-root">
+  <div id="menu-bg-scan"></div>
+  <div id="menu-noise"></div>
+
+  <header id="menu-header">
+    <h1 id="game-title">OUTBREAK<span class="slash">://</span>PROTOCOL</h1>
+    <p id="game-subtitle">CONTAINMENT HAS FAILED &mdash; SURVIVE THE SWARM</p>
+  </header>
+
+  <div id="menu-body">
+
+    <!-- STEP 1: AVATAR -->
+    <section class="menu-step" id="step-avatar" data-step="1">
+      <div class="step-heading"><span class="step-num">01</span> SELECT OPERATIVE</div>
+      <div class="avatar-cards">
+        <button class="avatar-card" data-avatar="female">
+          <div class="avatar-figure figure-female"></div>
+          <div class="avatar-name">SGT. VASQUEZ</div>
+          <div class="avatar-tag">RECON SPECIALIST</div>
+        </button>
+        <button class="avatar-card" data-avatar="male">
+          <div class="avatar-figure figure-male"></div>
+          <div class="avatar-name">CPL. DRAKE</div>
+          <div class="avatar-tag">ASSAULT SPECIALIST</div>
+        </button>
+      </div>
+    </section>
+
+    <!-- STEP 2: WEAPONS -->
+    <section class="menu-step" id="step-weapons" data-step="2">
+      <div class="step-heading"><span class="step-num">02</span> ARM YOURSELF</div>
+
+      <div class="weapon-columns">
+        <div class="weapon-column">
+          <div class="weapon-col-label">PRIMARY</div>
+          <div class="weapon-list" id="list-primary"></div>
+        </div>
+        <div class="weapon-column">
+          <div class="weapon-col-label">SECONDARY</div>
+          <div class="weapon-list" id="list-secondary"></div>
+        </div>
+        <div class="weapon-column">
+          <div class="weapon-col-label">MELEE</div>
+          <div class="weapon-list" id="list-melee"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 3: DEPLOY -->
+    <section class="menu-step" id="step-deploy" data-step="3">
+      <div class="loadout-summary" id="loadout-summary"></div>
+      <button id="deploy-btn">
+        <span class="deploy-stripes"></span>
+        <span class="deploy-text">DEPLOY</span>
+      </button>
+      <div id="controls-hint">
+        WASD MOVE &nbsp;&bull;&nbsp; MOUSE LOOK &nbsp;&bull;&nbsp; CLICK FIRE &nbsp;&bull;&nbsp; R RELOAD &nbsp;&bull;&nbsp; SHIFT SPRINT &nbsp;&bull;&nbsp; SPACE JUMP &nbsp;&bull;&nbsp; 1/2/3 SWITCH
+      </div>
+    </section>
+
+  </div>
+
+  <div id="menu-footer">
+    <div class="biohazard-mark">&#9761;</div>
+    <div id="loading-note">CLICK DEPLOY, THEN CLICK SCREEN TO LOCK MOUSE</div>
+  </div>
+</div>
+
+<!-- ================= PAUSE / DEATH ================= -->
+<div id="overlay-message" class="hidden">
+  <div id="overlay-title">YOU DIED</div>
+  <div id="overlay-stats"></div>
+  <button id="overlay-btn">RETURN TO BASE</button>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
