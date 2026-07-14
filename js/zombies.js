@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { resolveCollisions, WORLD_SIZE } from './world.js';
+import { audio } from './audio.js';
 
 // ---- base balance values (chunk 3 will scale these with player level) ----
 export const BASE_ZOMBIE_HEALTH = 55;
@@ -127,6 +128,8 @@ export class Zombie {
       legR.rotation.x = swing;
       head.rotation.z = Math.sin(this.walkPhase * 0.5) * 0.08;
 
+      if (Math.random() < delta * 0.06 && dist < 25) audio.playZombieGroan();
+
       return 'chasing';
     } else {
       this.mesh.rotation.y = Math.atan2(dx, dz);
@@ -203,6 +206,7 @@ export class ZombieManager {
       if (!z.alive) {
         z.dispose(this.scene);
         this.zombies.splice(i, 1);
+        audio.playZombieDeath();
         if (onZombieDied) onZombieDied(z);
       }
     }

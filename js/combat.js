@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { getWeaponById } from './weapons.js';
+import { audio } from './audio.js';
 
 const RAYCASTER = new THREE.Raycaster();
 
@@ -120,13 +121,14 @@ function buildViewmodel(weapon) {
 }
 
 export class WeaponSystem {
-  constructor({ camera, weaponAnchor, scene, loadout, zombieManager, hud, onKill }) {
+  constructor({ camera, weaponAnchor, scene, loadout, zombieManager, hud, onKill, getDamageMultiplier }) {
     this.camera = camera;
     this.anchor = weaponAnchor;
     this.scene = scene;
     this.zombieManager = zombieManager;
     this.hud = hud;
     this.onKill = onKill;
+    this.getDamageMultiplier = getDamageMultiplier || (() => 1);
 
     this.slots = { 1: loadout.primary, 2: loadout.secondary, 3: loadout.melee };
     this.currentSlotNum = 1;
@@ -197,6 +199,7 @@ export class WeaponSystem {
     if (rt.reloading || rt.ammoInMag >= rt.data.magSize || rt.ammoReserve <= 0) return;
     rt.reloading = true;
     rt.reloadTimer = rt.data.reloadTime;
+    audio.playReloadClick();
     this._updateAmmoHUD();
   }
 
@@ -242,7 +245,7 @@ export class WeaponSystem {
         if (zombie) {
           hitAny = true;
           const headshot = hits[0].object === zombie.mesh.userData.parts.head;
-          const dmg = headshot ? damage * 2 : damage;
+          const dmg = (headshot ? damage * 2 : damage) * this.getDamageMultiplier();
           const died = zombie.takeDamage(dmg);
           if (died && this.onKill) this.onKill(zombie, headshot);
         }
@@ -260,6 +263,7 @@ export class WeaponSystem {
       if (rt.cooldown > 0) return;
       rt.cooldown = 1 / data.fireRate;
       this._applyRecoil(0.12);
+      audio.playMeleeSwing();
       const hit = this._doHitscan(1, data.damage, 0.02, data.range);
       if (hit && this.hud) this.hud.flashHitmarker();
       return;
@@ -276,12 +280,25 @@ export class WeaponSystem {
     this._updateAmmoHUD();
     this._applyRecoil(data.pellets ? 0.28 : 0.09);
     this._flashMuzzle();
+    audio.playGunshot(data.id);
 
     const hit = this._doHitscan(data.pellets || 1, data.damage, data.spread, data.range);
     if (hit && this.hud) this.hud.flashHitmarker();
 
     if (rt.ammoInMag <= 0) this.startReload();
     if (!data.auto) this.firing = false; // semi-auto: require a fresh click
+  }
+
+  resupplyAmmo() {
+    Object.values(this.runtime).forEach(r => {
+      if (r.data.slot === 'melee') return;
+      r.ammoReserve = r.data.reserveMax;
+      if (r.ammoInMag < r.data.magSize) {
+        r.ammoInMag = r.data.magSize;
+        r.reloading = false;
+      }
+    });
+    this._updateAmmoHUD();
   }
 
   update(delta) {

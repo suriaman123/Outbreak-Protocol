@@ -4,6 +4,10 @@ import { Player } from './player.js';
 import { PRIMARY_WEAPONS, SECONDARY_WEAPONS, MELEE_WEAPONS } from './weapons.js';
 import { ZombieManager } from './zombies.js';
 import { WeaponSystem } from './combat.js';
+import { Progression } from './progression.js';
+import { LootManager } from './loot.js';
+import { Minimap } from './minimap.js';
+import { audio } from './audio.js';
 
 // ======================================================================
 // GAME STATE
@@ -13,6 +17,7 @@ const state = {
   loadout: { primary: null, secondary: null, melee: null },
   started: false,
   gameOver: false,
+  levelUpActive: false,
   kills: 0
 };
 
@@ -76,6 +81,7 @@ refreshDeployReadiness();
 
 deployBtn.addEventListener('click', () => {
   if (deployBtn.disabled) return;
+  audio.init();
   document.getElementById('menu-root').classList.add('hidden');
   document.getElementById('hud').classList.remove('hidden');
   startGame();
@@ -105,6 +111,9 @@ let worldData = null;
 let player = null;
 let zombieManager = null;
 let weaponSystem = null;
+let progression = null;
+let lootManager = null;
+let minimap = null;
 let clock = new THREE.Clock();
 
 // ======================================================================
@@ -130,18 +139,86 @@ function updateHealthUI() {
   const pct = Math.max(0, (player.health / player.maxHealth) * 100);
   document.getElementById('health-fill').style.width = pct + '%';
   document.getElementById('health-text').textContent = Math.ceil(Math.max(0, player.health));
+  document.getElementById('damage-vignette').classList.toggle('low-health', pct > 0 && pct <= 30);
 }
 
 function updateZombieCountUI() {
   document.getElementById('zombie-count').textContent = zombieManager.getAliveCount();
 }
 
-function addKillfeedEntry(zombie, headshot) {
+function updateProgressionUI({ level, xp, xpToNext }) {
+  document.getElementById('level-value').textContent = level;
+  const pct = Math.min(100, (xp / xpToNext) * 100);
+  document.getElementById('xp-bar-fill').style.width = pct + '%';
+}
+
+function showLevelUpBanner(choices) {
+  state.levelUpActive = true;
+  audio.playLevelUp();
+  document.exitPointerLock();
+  const banner = document.getElementById('levelup-banner');
+  const choicesEl = document.getElementById('levelup-choices');
+  choicesEl.innerHTML = '';
+  choices.forEach((choice, i) => {
+    const div = document.createElement('div');
+    div.className = 'levelup-choice';
+    div.innerHTML = `<div class="lu-title">${choice.title}</div><div class="lu-desc">${choice.desc}</div>`;
+    div.addEventListener('click', () => {
+      progression.chooseUpgrade(choice);
+    });
+    choicesEl.appendChild(div);
+  });
+  banner.classList.remove('hidden');
+}
+
+function hideLevelUpBanner() {
+  document.getElementById('levelup-banner').classList.add('hidden');
+  state.levelUpActive = false;
+  if (state.started && !state.gameOver) renderer.domElement.requestPointerLock();
+}
+
+function updateLootPrompt(inRange, progress) {
+  const prompt = document.getElementById('interact-prompt');
+  if (inRange) {
+    prompt.classList.remove('hidden');
+    document.getElementById('loot-progress-fill').style.width = Math.min(100, progress * 100) + '%';
+  } else {
+    prompt.classList.add('hidden');
+  }
+}
+
+const LOOT_LABELS = {
+  xp: amt => `+${amt} XP RECOVERED`,
+  health: amt => `+${amt} HEALTH RESTORED`,
+  weapon: () => 'AMMO CACHE RESUPPLIED'
+};
+
+function handleLootOpen(type) {
+  audio.playLootPickup();
+  let amount = 0;
+  if (type === 'xp') {
+    amount = 40 + Math.floor(Math.random() * 30);
+    progression.addXp(amount);
+  } else if (type === 'health') {
+    amount = 30 + Math.floor(Math.random() * 20);
+    player.heal(amount);
+    updateHealthUI();
+  } else if (type === 'weapon') {
+    weaponSystem.resupplyAmmo();
+  }
+  addKillfeedEntry(null, false, LOOT_LABELS[type](amount));
+}
+
+function addKillfeedEntry(zombie, headshot, customText) {
   const feed = document.getElementById('killfeed');
   const entry = document.createElement('div');
   entry.className = 'kill-entry';
-  const kind = zombie.isFat ? 'BLOATED HOSTILE' : 'HOSTILE';
-  entry.textContent = headshot ? `${kind} ELIMINATED \u2014 HEADSHOT` : `${kind} ELIMINATED`;
+  if (customText) {
+    entry.textContent = customText;
+  } else {
+    const kind = zombie.isFat ? 'BLOATED HOSTILE' : 'HOSTILE';
+    entry.textContent = headshot ? `${kind} ELIMINATED \u2014 HEADSHOT` : `${kind} ELIMINATED`;
+  }
   feed.appendChild(entry);
   setTimeout(() => entry.remove(), 3000);
   while (feed.children.length > 6) feed.removeChild(feed.firstChild);
@@ -163,6 +240,16 @@ function initWorld() {
   player.spawnAt(sx, sz);
 
   zombieManager = new ZombieManager(scene, worldData.colliders);
+  lootManager = new LootManager(scene, worldData.colliders);
+  minimap = new Minimap(document.getElementById('minimap-canvas'));
+
+  progression = new Progression({
+    player,
+    zombieManager,
+    onLevelUpStart: showLevelUpBanner,
+    onLevelUpEnd: hideLevelUpBanner,
+    onChange: updateProgressionUI
+  });
 
   weaponSystem = new WeaponSystem({
     camera,
@@ -171,9 +258,11 @@ function initWorld() {
     loadout: state.loadout,
     zombieManager,
     hud: hudHelpers,
+    getDamageMultiplier: () => progression.getDamageMultiplier(),
     onKill: (zombie, headshot) => {
       state.kills++;
       addKillfeedEntry(zombie, headshot);
+      progression.addKillXp(zombie.isFat, headshot);
     }
   });
 }
@@ -195,19 +284,20 @@ function startGame() {
 }
 
 renderer.domElement.addEventListener('click', () => {
-  if (state.started && !state.gameOver && document.pointerLockElement !== renderer.domElement) {
+  if (state.started && !state.gameOver && !state.levelUpActive && document.pointerLockElement !== renderer.domElement) {
     renderer.domElement.requestPointerLock();
   }
 });
 
 document.addEventListener('pointerlockchange', () => {
-  if (state.gameOver) return;
+  if (state.gameOver || state.levelUpActive) return;
   const locked = document.pointerLockElement === renderer.domElement;
   if (!locked && state.started) {
     overlay.classList.remove('hidden');
     document.getElementById('overlay-title').textContent = 'PAUSED';
     document.getElementById('overlay-btn').textContent = 'RESUME';
     document.getElementById('overlay-stats').textContent = 'CLICK RESUME TO CONTINUE';
+    document.getElementById('interact-prompt').classList.add('hidden');
   } else if (locked) {
     overlay.classList.add('hidden');
   }
@@ -225,6 +315,7 @@ function handlePlayerHit(damage) {
   const died = player.takeDamage(damage);
   updateHealthUI();
   flashDamageVignette();
+  audio.playPlayerHurt();
   if (died) handleDeath();
 }
 
@@ -247,14 +338,19 @@ function animate() {
   requestAnimationFrame(animate);
   const delta = Math.min(clock.getDelta(), 0.05);
 
-  if (document.pointerLockElement === renderer.domElement) {
+  if (document.pointerLockElement === renderer.domElement && !state.levelUpActive) {
     player.update(delta);
     weaponSystem.update(delta);
     zombieManager.update(delta, player.position, handlePlayerHit, () => updateZombieCountUI());
+    lootManager.update(delta, player.position, handleLootOpen, updateLootPrompt);
     updateZombieCountUI();
 
     worldData.particles.rotation.y += delta * 0.01;
   }
+
+  if (minimap && !state.gameOver) minimap.update(camera, player.position, zombieManager, lootManager);
+  if (progression && !state.gameOver) progression.tick();
+  if (player && !state.gameOver) updateHealthUI();
 
   renderer.render(scene, camera);
 }
