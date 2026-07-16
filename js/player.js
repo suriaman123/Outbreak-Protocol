@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { resolveCollisions } from './world.js';
 
 const WALK_SPEED = 6.2;
@@ -9,11 +8,19 @@ const GRAVITY = 19.5;
 const PLAYER_RADIUS = 0.55;
 const EYE_HEIGHT = 1.7;
 
+const MOUSE_SENS = 0.0022;
+const TOUCH_SENS = 0.0052;
+const MAX_PITCH = Math.PI / 2 - 0.05;
+
 export class Player {
   constructor(camera, domElement, colliders) {
     this.camera = camera;
+    this.domElement = domElement;
     this.colliders = colliders;
-    this.controls = new PointerLockControls(camera, domElement);
+
+    this.camera.rotation.order = 'YXZ';
+    this.yaw = 0;
+    this.pitch = 0;
 
     this.position = new THREE.Vector3(0, EYE_HEIGHT, 0);
     this.velocityY = 0;
@@ -21,19 +28,20 @@ export class Player {
     this.sprinting = false;
 
     this.move = { forward: false, back: false, left: false, right: false };
+    this.analog = { x: 0, y: 0 }; // virtual joystick input, -1..1
 
     this.health = 100;
     this.maxHealth = 100;
 
-    // head-bob
     this.bobTime = 0;
 
-    // viewmodel holder (weapon meshes attach here in chunk 2)
+    // viewmodel holder (weapon meshes attach here)
     this.weaponAnchor = new THREE.Group();
     this.weaponAnchor.position.set(0.32, -0.28, -0.55);
     camera.add(this.weaponAnchor);
 
     this._bindKeys();
+    this._bindMouseLook();
   }
 
   _bindKeys() {
@@ -44,9 +52,7 @@ export class Player {
         case 'KeyA': this.move.left = true; break;
         case 'KeyD': this.move.right = true; break;
         case 'ShiftLeft': case 'ShiftRight': this.sprinting = true; break;
-        case 'Space':
-          if (this.onGround) { this.velocityY = JUMP_VELOCITY; this.onGround = false; }
-          break;
+        case 'Space': this.jump(); break;
       }
     });
     window.addEventListener('keyup', (e) => {
@@ -60,6 +66,38 @@ export class Player {
     });
   }
 
+  _bindMouseLook() {
+    document.addEventListener('mousemove', (e) => {
+      if (document.pointerLockElement !== this.domElement) return;
+      this._applyLookDelta(e.movementX, e.movementY, MOUSE_SENS);
+    });
+  }
+
+  // called by touch "look zone" drag handlers on mobile
+  lookTouchDelta(dx, dy) {
+    this._applyLookDelta(dx, dy, TOUCH_SENS);
+  }
+
+  _applyLookDelta(dx, dy, sens) {
+    this.yaw -= dx * sens;
+    this.pitch -= dy * sens;
+    this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch));
+    this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+  }
+
+  // called by the virtual joystick; x/y each in -1..1 (y positive = forward)
+  setAnalogMove(x, y) {
+    this.analog.x = x;
+    this.analog.y = y;
+  }
+
+  jump() {
+    if (this.onGround) {
+      this.velocityY = JUMP_VELOCITY;
+      this.onGround = false;
+    }
+  }
+
   spawnAt(x, z) {
     this.position.set(x, EYE_HEIGHT, z);
     this.camera.position.copy(this.position);
@@ -71,8 +109,13 @@ export class Player {
 
   update(delta) {
     // --- horizontal movement relative to look direction ---
-    const forwardInput = (this.move.forward ? 1 : 0) - (this.move.back ? 1 : 0);
-    const rightInput = (this.move.right ? 1 : 0) - (this.move.left ? 1 : 0);
+    const analogActive = Math.abs(this.analog.x) > 0.05 || Math.abs(this.analog.y) > 0.05;
+    const forwardInput = analogActive
+      ? this.analog.y
+      : (this.move.forward ? 1 : 0) - (this.move.back ? 1 : 0);
+    const rightInput = analogActive
+      ? this.analog.x
+      : (this.move.right ? 1 : 0) - (this.move.left ? 1 : 0);
 
     let moving = false;
     if (forwardInput !== 0 || rightInput !== 0) {
@@ -85,7 +128,7 @@ export class Player {
       const move = new THREE.Vector3();
       move.addScaledVector(dir, forwardInput);
       move.addScaledVector(right, rightInput);
-      if (move.lengthSq() > 0) move.normalize();
+      if (move.lengthSq() > 1) move.normalize();
 
       const spd = this.speed;
       this.position.x += move.x * spd * delta;

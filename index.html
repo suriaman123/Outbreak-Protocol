@@ -27,6 +27,8 @@
   <div id="hit-marker"></div>
   <div id="damage-vignette"></div>
 
+  <button id="mobile-pause-btn" class="hidden">&#10074;&#10074;</button>
+
   <div id="hud-top-left">
     <div class="hud-block">
       <div class="hud-label">LEVEL</div>
@@ -75,6 +77,22 @@
   </div>
 </div>
 
+<!-- ================= MOBILE TOUCH CONTROLS ================= -->
+<div id="touch-controls" class="hidden">
+  <div id="touch-look-zone"></div>
+  <div id="joystick-base"><div id="joystick-stick"></div></div>
+  <button id="touch-jump-btn">JUMP</button>
+  <button id="touch-reload-btn">RLD</button>
+  <button id="touch-fire-btn">FIRE</button>
+  <div id="touch-weapon-hint">TAP 1 2 3 ABOVE TO SWITCH</div>
+</div>
+
+<!-- ================= ROTATE DEVICE OVERLAY ================= -->
+<div id="rotate-overlay">
+  <div id="rotate-icon">&#8635;</div>
+  <div id="rotate-text">ROTATE DEVICE TO LANDSCAPE</div>
+</div>
+
 <!-- ================= MAIN MENU ================= -->
 <div id="menu-root">
   <div id="menu-bg-scan"></div>
@@ -83,6 +101,7 @@
   <header id="menu-header">
     <h1 id="game-title">OUTBREAK<span class="slash">://</span>PROTOCOL</h1>
     <p id="game-subtitle">CONTAINMENT HAS FAILED &mdash; SURVIVE THE SWARM</p>
+    <div id="best-score-badge">BEST SCORE <span id="best-score-value">0</span></div>
   </header>
 
   <div id="menu-body">
@@ -148,7 +167,10 @@
 <div id="overlay-message" class="hidden">
   <div id="overlay-title">YOU DIED</div>
   <div id="overlay-stats"></div>
-  <button id="overlay-btn">RETURN TO BASE</button>
+  <div id="overlay-buttons">
+    <button id="overlay-btn">RETURN TO BASE</button>
+    <button id="overlay-quit-btn" class="hidden">QUIT TO MENU</button>
+  </div>
 </div>
 
 <script type="importmap">

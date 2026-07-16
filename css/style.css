@@ -109,6 +109,20 @@ html, body {
   margin-top: 6px;
 }
 
+#best-score-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 12px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  color: var(--fog);
+  border: 1px solid rgba(157,255,60,0.25);
+  padding: 5px 12px;
+}
+#best-score-badge span { color: var(--acid); font-size: 0.95rem; font-weight: 700; }
+
 #menu-body { position: relative; z-index: 2; display: flex; flex-direction: column; gap: clamp(20px, 3vh, 40px); flex: 1; }
 
 .step-heading {
@@ -380,12 +394,120 @@ html, body {
 }
 #overlay-stats { font-family: 'Share Tech Mono', monospace; color: var(--fog); font-size: 0.9rem; text-align: center; line-height: 1.8; }
 #overlay-stats span { color: var(--bone); }
+#overlay-buttons { display: flex; gap: 14px; }
 #overlay-btn {
   font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem; letter-spacing: 0.1em;
   background: transparent; border: 1px solid var(--acid); color: var(--acid);
   padding: 12px 36px; cursor: pointer; transition: all 0.15s;
 }
 #overlay-btn:hover { background: var(--acid); color: var(--void); }
+#overlay-quit-btn {
+  font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem; letter-spacing: 0.1em;
+  background: transparent; border: 1px solid var(--blood); color: var(--blood);
+  padding: 12px 28px; cursor: pointer; transition: all 0.15s;
+}
+#overlay-quit-btn:hover { background: var(--blood); color: var(--bone); }
+
+#mobile-pause-btn {
+  position: fixed; top: 16px; left: 16px; z-index: 30;
+  width: 36px; height: 36px;
+  background: rgba(10,13,10,0.6); border: 1px solid rgba(232,228,216,0.25);
+  color: var(--bone); font-size: 0.75rem;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: auto; cursor: pointer;
+}
+
+/* ================= MOBILE TOUCH CONTROLS ================= */
+#touch-controls {
+  position: fixed; inset: 0; z-index: 25;
+  pointer-events: none;
+}
+#touch-look-zone {
+  position: absolute; top: 0; right: 0; bottom: 0; left: 42%;
+  pointer-events: auto;
+  touch-action: none;
+}
+#joystick-base {
+  position: absolute; left: 26px; bottom: 26px;
+  width: 110px; height: 110px;
+  border-radius: 50%;
+  background: rgba(157,255,60,0.06);
+  border: 1px solid rgba(157,255,60,0.3);
+  pointer-events: auto;
+  touch-action: none;
+}
+#joystick-stick {
+  position: absolute; top: 50%; left: 50%;
+  width: 46px; height: 46px;
+  margin: -23px 0 0 -23px;
+  border-radius: 50%;
+  background: rgba(157,255,60,0.35);
+  border: 1px solid var(--acid);
+  transition: transform 0.03s linear;
+}
+#touch-fire-btn {
+  position: absolute; right: 30px; bottom: 34px;
+  width: 84px; height: 84px;
+  border-radius: 50%;
+  background: rgba(193,39,45,0.25);
+  border: 2px solid var(--blood);
+  color: var(--bone);
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.1rem; letter-spacing: 0.08em;
+  pointer-events: auto;
+  touch-action: none;
+  z-index: 2;
+}
+#touch-fire-btn:active { background: rgba(193,39,45,0.5); }
+#touch-reload-btn {
+  position: absolute; right: 34px; bottom: 132px;
+  width: 54px; height: 54px;
+  border-radius: 50%;
+  background: rgba(232,228,216,0.08);
+  border: 1px solid rgba(232,228,216,0.3);
+  color: var(--bone);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.7rem;
+  pointer-events: auto;
+  touch-action: none;
+  z-index: 2;
+}
+#touch-jump-btn {
+  position: absolute; right: 128px; bottom: 40px;
+  width: 58px; height: 58px;
+  border-radius: 50%;
+  background: rgba(232,228,216,0.08);
+  border: 1px solid rgba(232,228,216,0.3);
+  color: var(--bone);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.65rem;
+  pointer-events: auto;
+  touch-action: none;
+  z-index: 2;
+}
+#touch-weapon-hint {
+  position: absolute; top: 60px; right: 20px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.6rem; color: var(--fog); letter-spacing: 0.06em;
+  text-align: right;
+}
+
+/* ================= ROTATE DEVICE OVERLAY ================= */
+#rotate-overlay {
+  display: none;
+  position: fixed; inset: 0; z-index: 100;
+  background: var(--void);
+  flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+  color: var(--bone);
+  text-align: center;
+}
+#rotate-icon { font-size: 3rem; color: var(--acid); animation: rotate-spin 2s linear infinite; }
+@keyframes rotate-spin { 100% { transform: rotate(360deg); } }
+#rotate-text { font-family: 'Bebas Neue', sans-serif; font-size: 1.3rem; letter-spacing: 0.1em; }
+
+@media (orientation: portrait) and (pointer: coarse) {
+  #rotate-overlay { display: flex; }
+}
 
 /* scrollbar */
 #menu-root::-webkit-scrollbar { width: 8px; }

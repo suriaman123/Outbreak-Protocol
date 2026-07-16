@@ -166,6 +166,7 @@ export class ZombieManager {
     this.healthMult = 1;
     this.speedMult = 1;
     this.fatChance = 0.12;
+    this.leashRange = 65;
   }
 
   setDifficulty({ spawnInterval, maxAlive, spawnBatch, healthMult, speedMult, fatChance }) {
@@ -178,9 +179,10 @@ export class ZombieManager {
   }
 
   spawnOne(playerPos) {
-    // spawn on a ring around the player, just beyond fog visibility, from a random direction
+    // spawn on a ring around the CURRENT player position, just beyond clear sightline,
+    // from a random direction — never anywhere else on the map.
     const angle = Math.random() * Math.PI * 2;
-    const dist = 34 + Math.random() * 14;
+    const dist = 24 + Math.random() * 12; // 24-36 units from player
     let x = playerPos.x + Math.cos(angle) * dist;
     let z = playerPos.z + Math.sin(angle) * dist;
     const limit = WORLD_SIZE - 4;
@@ -201,6 +203,17 @@ export class ZombieManager {
 
     for (let i = this.zombies.length - 1; i >= 0; i--) {
       const z = this.zombies[i];
+
+      // leash: if a zombie somehow ends up far from the player (e.g. the player
+      // sprinted off in another direction), recycle it instead of leaving it to
+      // trudge across the whole map from wherever it spawned.
+      const distToPlayer = Math.hypot(z.mesh.position.x - playerPos.x, z.mesh.position.z - playerPos.z);
+      if (distToPlayer > this.leashRange) {
+        z.dispose(this.scene);
+        this.zombies.splice(i, 1);
+        continue;
+      }
+
       const result = z.update(delta, playerPos, this.colliders);
       if (result === 'attack') onPlayerHit(z.damage);
       if (!z.alive) {

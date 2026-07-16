@@ -12,14 +12,46 @@ import { audio } from './audio.js';
 // ======================================================================
 // GAME STATE
 // ======================================================================
+const isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0 || window.matchMedia('(pointer: coarse)').matches;
+
 const state = {
   avatar: null,           // 'male' | 'female'
   loadout: { primary: null, secondary: null, melee: null },
   started: false,
   gameOver: false,
   levelUpActive: false,
+  controlsLocked: false,  // unified "actively playing" flag for both pointer-lock (desktop) and touch (mobile)
+  mobile: isMobile,
   kills: 0
 };
+
+// ======================================================================
+// BEST SCORE (localStorage)
+// ======================================================================
+const BEST_SCORE_KEY = 'outbreak_protocol_best_score';
+
+function getBestScore() {
+  return parseInt(localStorage.getItem(BEST_SCORE_KEY) || '0', 10);
+}
+
+function computeScore() {
+  const level = progression ? progression.level : 1;
+  return state.kills * 10 + (level - 1) * 100;
+}
+
+function saveBestScoreIfHigher(score) {
+  const best = getBestScore();
+  if (score > best) {
+    localStorage.setItem(BEST_SCORE_KEY, String(score));
+    return true;
+  }
+  return false;
+}
+
+function refreshBestScoreBadge() {
+  document.getElementById('best-score-value').textContent = getBestScore();
+}
+refreshBestScoreBadge();
 
 // ======================================================================
 // MENU WIRING
@@ -78,6 +110,12 @@ function refreshDeployReadiness() {
   }
 }
 refreshDeployReadiness();
+
+if (state.mobile) {
+  document.getElementById('controls-hint').textContent =
+    'LEFT STICK MOVE \u2022 DRAG RIGHT SIDE TO LOOK \u2022 FIRE / RLD / JUMP BUTTONS \u2022 TAP 1/2/3 TO SWITCH';
+  document.getElementById('loading-note').textContent = 'TAP DEPLOY TO BEGIN';
+}
 
 deployBtn.addEventListener('click', () => {
   if (deployBtn.disabled) return;
@@ -154,8 +192,9 @@ function updateProgressionUI({ level, xp, xpToNext }) {
 
 function showLevelUpBanner(choices) {
   state.levelUpActive = true;
+  state.controlsLocked = false;
   audio.playLevelUp();
-  document.exitPointerLock();
+  if (document.pointerLockElement) document.exitPointerLock();
   const banner = document.getElementById('levelup-banner');
   const choicesEl = document.getElementById('levelup-choices');
   choicesEl.innerHTML = '';
@@ -174,7 +213,13 @@ function showLevelUpBanner(choices) {
 function hideLevelUpBanner() {
   document.getElementById('levelup-banner').classList.add('hidden');
   state.levelUpActive = false;
-  if (state.started && !state.gameOver) renderer.domElement.requestPointerLock();
+  if (state.started && !state.gameOver) {
+    if (state.mobile) {
+      state.controlsLocked = true;
+    } else {
+      renderer.domElement.requestPointerLock();
+    }
+  }
 }
 
 function updateLootPrompt(inRange, progress) {
@@ -265,18 +310,43 @@ function initWorld() {
       progression.addKillXp(zombie.isFat, headshot);
     }
   });
+
+  // tapping weapon slot icons switches weapons on both desktop and mobile
+  document.querySelectorAll('.slot').forEach(el => {
+    el.addEventListener('click', () => weaponSystem.switchSlot(Number(el.dataset.slot)));
+  });
 }
 
 // ======================================================================
-// POINTER LOCK / PAUSE / DEATH HANDLING
+// POINTER LOCK / PAUSE / DEATH / QUIT HANDLING
 // ======================================================================
 const overlay = document.getElementById('overlay-message');
+const overlayBtn = document.getElementById('overlay-btn');
+const overlayQuitBtn = document.getElementById('overlay-quit-btn');
+const mobilePauseBtn = document.getElementById('mobile-pause-btn');
+const touchControls = document.getElementById('touch-controls');
 
 function startGame() {
   if (!worldData) initWorld();
   state.started = true;
   state.gameOver = false;
-  renderer.domElement.requestPointerLock();
+
+  if (state.mobile) {
+    mobilePauseBtn.classList.remove('hidden');
+    touchControls.classList.remove('hidden');
+    state.controlsLocked = true;
+    // best-effort fullscreen + landscape lock; silently ignored where unsupported
+    const fsEl = document.documentElement;
+    if (fsEl.requestFullscreen) {
+      fsEl.requestFullscreen().catch(() => {});
+    }
+    if (screen.orientation && screen.orientation.lock) {
+      screen.orientation.lock('landscape').catch(() => {});
+    }
+  } else {
+    renderer.domElement.requestPointerLock();
+  }
+
   updateHealthUI();
   updateZombieCountUI();
   clock.start();
@@ -284,31 +354,57 @@ function startGame() {
 }
 
 renderer.domElement.addEventListener('click', () => {
+  if (state.mobile) return;
   if (state.started && !state.gameOver && !state.levelUpActive && document.pointerLockElement !== renderer.domElement) {
     renderer.domElement.requestPointerLock();
   }
 });
 
+function showPauseOverlay() {
+  overlay.classList.remove('hidden');
+  document.getElementById('overlay-title').textContent = 'PAUSED';
+  overlayBtn.textContent = 'RESUME';
+  document.getElementById('overlay-stats').textContent = 'SURVIVAL SCORE: ' + computeScore();
+  overlayQuitBtn.classList.remove('hidden');
+  document.getElementById('interact-prompt').classList.add('hidden');
+}
+
+// desktop: Esc releases pointer lock natively, which we detect here
 document.addEventListener('pointerlockchange', () => {
-  if (state.gameOver || state.levelUpActive) return;
+  if (state.mobile || state.gameOver || state.levelUpActive) return;
   const locked = document.pointerLockElement === renderer.domElement;
+  state.controlsLocked = locked;
   if (!locked && state.started) {
-    overlay.classList.remove('hidden');
-    document.getElementById('overlay-title').textContent = 'PAUSED';
-    document.getElementById('overlay-btn').textContent = 'RESUME';
-    document.getElementById('overlay-stats').textContent = 'CLICK RESUME TO CONTINUE';
-    document.getElementById('interact-prompt').classList.add('hidden');
+    showPauseOverlay();
   } else if (locked) {
     overlay.classList.add('hidden');
   }
 });
 
-document.getElementById('overlay-btn').addEventListener('click', () => {
+// mobile: dedicated pause button since there's no Esc key
+mobilePauseBtn.addEventListener('click', () => {
+  if (!state.started || state.gameOver || state.levelUpActive) return;
+  state.controlsLocked = false;
+  showPauseOverlay();
+});
+
+overlayBtn.addEventListener('click', () => {
   if (state.gameOver) {
     location.reload();
+    return;
+  }
+  overlay.classList.add('hidden');
+  if (state.mobile) {
+    state.controlsLocked = true;
   } else {
     renderer.domElement.requestPointerLock();
   }
+});
+
+overlayQuitBtn.addEventListener('click', () => {
+  const score = computeScore();
+  saveBestScoreIfHigher(score);
+  location.reload();
 });
 
 function handlePlayerHit(damage) {
@@ -322,12 +418,120 @@ function handlePlayerHit(damage) {
 function handleDeath() {
   state.started = false;
   state.gameOver = true;
-  document.exitPointerLock();
+  state.controlsLocked = false;
+  if (document.pointerLockElement) document.exitPointerLock();
+
+  const score = computeScore();
+  const isNewBest = saveBestScoreIfHigher(score);
+
   overlay.classList.remove('hidden');
   document.getElementById('overlay-title').textContent = 'YOU DIED';
-  document.getElementById('overlay-btn').textContent = 'RETURN TO BASE';
+  overlayBtn.textContent = 'RETURN TO BASE';
+  overlayQuitBtn.classList.add('hidden');
   document.getElementById('overlay-stats').innerHTML =
-    `HOSTILES ELIMINATED: <span>${state.kills}</span>`;
+    `HOSTILES ELIMINATED: <span>${state.kills}</span><br>` +
+    `SURVIVAL SCORE: <span>${score}</span>${isNewBest ? ' \u2014 NEW BEST!' : ''}<br>` +
+    `BEST SCORE: <span>${getBestScore()}</span>`;
+}
+
+// ======================================================================
+// MOBILE TOUCH CONTROLS
+// ======================================================================
+if (state.mobile) {
+  const joystickBase = document.getElementById('joystick-base');
+  const joystickStick = document.getElementById('joystick-stick');
+  const lookZone = document.getElementById('touch-look-zone');
+  const fireBtn = document.getElementById('touch-fire-btn');
+  const reloadBtn = document.getElementById('touch-reload-btn');
+  const jumpBtn = document.getElementById('touch-jump-btn');
+
+  let joystickTouchId = null;
+  let joyCenter = { x: 0, y: 0 };
+  const JOY_MAX_RADIUS = 40;
+
+  joystickBase.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (!state.controlsLocked) return;
+    const t = e.changedTouches[0];
+    joystickTouchId = t.identifier;
+    const rect = joystickBase.getBoundingClientRect();
+    joyCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  }, { passive: false });
+
+  joystickBase.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier !== joystickTouchId) continue;
+      let dx = t.clientX - joyCenter.x;
+      let dy = t.clientY - joyCenter.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > JOY_MAX_RADIUS) { dx = (dx / dist) * JOY_MAX_RADIUS; dy = (dy / dist) * JOY_MAX_RADIUS; }
+      joystickStick.style.transform = `translate(${dx}px, ${dy}px)`;
+      if (player) player.setAnalogMove(dx / JOY_MAX_RADIUS, -dy / JOY_MAX_RADIUS);
+    }
+  }, { passive: false });
+
+  function releaseJoystick(e) {
+    for (const t of e.changedTouches) {
+      if (t.identifier === joystickTouchId) {
+        joystickTouchId = null;
+        joystickStick.style.transform = 'translate(0,0)';
+        if (player) player.setAnalogMove(0, 0);
+      }
+    }
+  }
+  joystickBase.addEventListener('touchend', releaseJoystick);
+  joystickBase.addEventListener('touchcancel', releaseJoystick);
+
+  let lookTouchId = null;
+  let lastLookX = 0, lastLookY = 0;
+
+  lookZone.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (!state.controlsLocked) return;
+    const t = e.changedTouches[0];
+    lookTouchId = t.identifier;
+    lastLookX = t.clientX; lastLookY = t.clientY;
+  }, { passive: false });
+
+  lookZone.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (!state.controlsLocked || !player) return;
+    for (const t of e.changedTouches) {
+      if (t.identifier !== lookTouchId) continue;
+      const dx = t.clientX - lastLookX;
+      const dy = t.clientY - lastLookY;
+      lastLookX = t.clientX; lastLookY = t.clientY;
+      player.lookTouchDelta(dx, dy);
+    }
+  }, { passive: false });
+
+  lookZone.addEventListener('touchend', (e) => {
+    for (const t of e.changedTouches) if (t.identifier === lookTouchId) lookTouchId = null;
+  });
+
+  fireBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (!state.controlsLocked || !weaponSystem) return;
+    weaponSystem.startFiring();
+  }, { passive: false });
+  fireBtn.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    if (weaponSystem) weaponSystem.stopFiring();
+  }, { passive: false });
+  fireBtn.addEventListener('touchcancel', () => { if (weaponSystem) weaponSystem.stopFiring(); });
+
+  reloadBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (!state.controlsLocked || !weaponSystem) return;
+    weaponSystem.startReload();
+  }, { passive: false });
+
+  jumpBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (!state.controlsLocked || !player) return;
+    player.jump();
+  }, { passive: false });
 }
 
 // ======================================================================
@@ -338,7 +542,7 @@ function animate() {
   requestAnimationFrame(animate);
   const delta = Math.min(clock.getDelta(), 0.05);
 
-  if (document.pointerLockElement === renderer.domElement && !state.levelUpActive) {
+  if (state.controlsLocked && !state.levelUpActive) {
     player.update(delta);
     weaponSystem.update(delta);
     zombieManager.update(delta, player.position, handlePlayerHit, () => updateZombieCountUI());

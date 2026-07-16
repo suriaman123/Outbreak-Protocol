@@ -158,9 +158,17 @@ export class WeaponSystem {
     this._muzzleLight = new THREE.PointLight(0xfff2c0, 0, 4);
     weaponAnchor.add(this._muzzleLight);
 
+    this.effects = []; // active tracers + impact particles, in world space
+    this.effectsGroup = new THREE.Group();
+    scene.add(this.effectsGroup);
+
     this._setupInput();
     this.switchSlot(1);
   }
+
+  // public hooks for touch/mobile fire button (bypasses the desktop mousedown gate)
+  startFiring() { this.firing = true; }
+  stopFiring() { this.firing = false; }
 
   _setupInput() {
     window.addEventListener('mousedown', (e) => {
@@ -216,6 +224,12 @@ export class WeaponSystem {
     }
   }
 
+  _muzzleWorldPos() {
+    const rt = this.current;
+    const local = new THREE.Vector3(0, 0, rt.mesh.userData.muzzleZ || -0.3);
+    return rt.mesh.localToWorld(local);
+  }
+
   _flashMuzzle() {
     this._muzzleLight.intensity = 3.2;
     this._muzzleLight.position.set(0, 0, this.current.mesh.userData.muzzleZ || -0.3);
@@ -229,6 +243,8 @@ export class WeaponSystem {
     let hitAny = false;
     const originVec = new THREE.Vector3();
     this.camera.getWorldPosition(originVec);
+    const muzzleOrigin = this._muzzleWorldPos();
+
     for (let i = 0; i < pelletCount; i++) {
       const dir = new THREE.Vector3();
       this.camera.getWorldDirection(dir);
@@ -240,7 +256,10 @@ export class WeaponSystem {
       RAYCASTER.far = range;
       const meshes = this.zombieManager.getHitboxMeshes();
       const hits = RAYCASTER.intersectObjects(meshes, true);
+
+      let endPoint;
       if (hits.length > 0) {
+        endPoint = hits[0].point.clone();
         const zombie = findZombieFromHit(hits[0].object);
         if (zombie) {
           hitAny = true;
@@ -248,10 +267,66 @@ export class WeaponSystem {
           const dmg = (headshot ? damage * 2 : damage) * this.getDamageMultiplier();
           const died = zombie.takeDamage(dmg);
           if (died && this.onKill) this.onKill(zombie, headshot);
+          this._spawnImpact(endPoint);
         }
+      } else {
+        endPoint = originVec.clone().addScaledVector(dir, range);
       }
+
+      this._spawnTracer(muzzleOrigin, endPoint);
     }
     return hitAny;
+  }
+
+  _spawnTracer(start, end) {
+    const dist = start.distanceTo(end);
+    if (dist < 0.05) return;
+    const geo = new THREE.CylinderGeometry(0.012, 0.012, dist, 5, 1, true);
+    geo.translate(0, dist / 2, 0);
+    geo.rotateX(Math.PI / 2);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xfff6c9, transparent: true, opacity: 0.9, depthWrite: false });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(start);
+    mesh.lookAt(end);
+    this.effectsGroup.add(mesh);
+    this.effects.push({ kind: 'tracer', mesh, life: 0.09, maxLife: 0.09 });
+  }
+
+  _spawnImpact(point) {
+    const count = 5 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < count; i++) {
+      const geo = new THREE.OctahedronGeometry(0.035 + Math.random() * 0.03, 0);
+      const mat = new THREE.MeshBasicMaterial({ color: 0x9dff3c, transparent: true, opacity: 1 });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.copy(point);
+      this.effectsGroup.add(mesh);
+      const velocity = new THREE.Vector3(
+        (Math.random() - 0.5) * 3,
+        Math.random() * 2.5 + 0.5,
+        (Math.random() - 0.5) * 3
+      );
+      this.effects.push({ kind: 'impact', mesh, life: 0.4, maxLife: 0.4, velocity });
+    }
+  }
+
+  _updateEffects(delta) {
+    for (let i = this.effects.length - 1; i >= 0; i--) {
+      const fx = this.effects[i];
+      fx.life -= delta;
+      if (fx.life <= 0) {
+        this.effectsGroup.remove(fx.mesh);
+        fx.mesh.geometry.dispose();
+        fx.mesh.material.dispose();
+        this.effects.splice(i, 1);
+        continue;
+      }
+      const t = fx.life / fx.maxLife;
+      fx.mesh.material.opacity = fx.kind === 'tracer' ? t * 0.9 : t;
+      if (fx.kind === 'impact') {
+        fx.velocity.y -= 9 * delta;
+        fx.mesh.position.addScaledVector(fx.velocity, delta);
+      }
+    }
   }
 
   fireOnce() {
@@ -323,11 +398,22 @@ export class WeaponSystem {
     }
 
     this._muzzleLight.intensity *= Math.max(0, 1 - delta * 14);
+    this._updateEffects(delta);
 
     this.recoil *= Math.max(0, 1 - delta * 10);
     this.bobT += delta;
     const sway = Math.sin(this.bobT * 1.4) * 0.004;
-    this.anchor.position.set(0.32 + sway, -0.28 - this.recoil * 0.4, -0.55 + this.recoil * 0.15);
-    this.anchor.rotation.x = -this.recoil * 1.4;
+
+    let reloadDip = 0, reloadTilt = 0;
+    if (rt.reloading && rt.data.slot !== 'melee') {
+      const progress = 1 - Math.max(0, rt.reloadTimer) / rt.data.reloadTime;
+      const dipCurve = Math.sin(Math.min(1, progress) * Math.PI); // 0 -> 1 -> 0
+      reloadDip = dipCurve * 0.16;
+      reloadTilt = dipCurve * 0.55;
+    }
+
+    this.anchor.position.set(0.32 + sway, -0.28 - this.recoil * 0.4 - reloadDip, -0.55 + this.recoil * 0.15);
+    this.anchor.rotation.x = -this.recoil * 1.4 + reloadTilt * 0.5;
+    this.anchor.rotation.z = reloadTilt * 0.4;
   }
 }
