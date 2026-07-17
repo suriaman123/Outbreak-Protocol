@@ -4,6 +4,13 @@ import { audio } from './audio.js';
 
 const RAYCASTER = new THREE.Raycaster();
 
+// shared geometries for hit-effects — built once, reused for every tracer/impact
+// so rapid-fire weapons don't allocate dozens of new BufferGeometries per second
+const TRACER_GEOMETRY = new THREE.CylinderGeometry(0.012, 0.012, 1, 5, 1, true);
+TRACER_GEOMETRY.translate(0, 0.5, 0); // extends from local origin up to local +Y
+const IMPACT_GEOMETRY = new THREE.OctahedronGeometry(0.045, 0);
+const UP_AXIS = new THREE.Vector3(0, 1, 0);
+
 function findZombieFromHit(object) {
   let o = object;
   while (o) {
@@ -158,12 +165,47 @@ export class WeaponSystem {
     this._muzzleLight = new THREE.PointLight(0xfff2c0, 0, 4);
     weaponAnchor.add(this._muzzleLight);
 
+    // dedicated fill light so the viewmodel always reads clearly, independent of
+    // world lighting direction (a common FPS trick — CS2 does this too)
+    const viewmodelFill = new THREE.PointLight(0xcfd8c8, 0.9, 3.5);
+    viewmodelFill.position.set(0.1, 0.4, 0.3);
+    weaponAnchor.add(viewmodelFill);
+
+    this._buildArms(weaponAnchor);
+
     this.effects = []; // active tracers + impact particles, in world space
     this.effectsGroup = new THREE.Group();
     scene.add(this.effectsGroup);
 
     this._setupInput();
     this.switchSlot(1);
+  }
+
+  // low-poly forearms + hands gripping the weapon, always visible regardless of
+  // which weapon is equipped — this is what actually sells "a gun in my hands"
+  _buildArms(anchor) {
+    const skin = new THREE.MeshStandardMaterial({ color: 0xc99270, roughness: 0.85 });
+    const sleeve = new THREE.MeshStandardMaterial({ color: 0x2e3427, roughness: 0.9 });
+
+    const rightForearm = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.05, 0.5, 8), sleeve);
+    rightForearm.position.set(0.08, -0.28, 0.28);
+    rightForearm.rotation.set(1.15, 0.15, -0.25);
+    anchor.add(rightForearm);
+
+    const rightHand = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.08, 0.12), skin);
+    rightHand.position.set(0.03, -0.1, 0.02);
+    rightHand.rotation.set(0.3, 0.1, -0.1);
+    anchor.add(rightHand);
+
+    const leftForearm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.45, 8), sleeve);
+    leftForearm.position.set(-0.05, -0.22, -0.28);
+    leftForearm.rotation.set(-0.9, -0.2, 0.3);
+    anchor.add(leftForearm);
+
+    const leftHand = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.07, 0.1), skin);
+    leftHand.position.set(-0.02, -0.08, -0.42);
+    leftHand.rotation.set(0.2, -0.1, 0.15);
+    anchor.add(leftHand);
   }
 
   // public hooks for touch/mobile fire button (bypasses the desktop mousedown gate)
@@ -184,6 +226,14 @@ export class WeaponSystem {
       if (e.code === 'Digit3') this.switchSlot(3);
       if (e.code === 'KeyR') this.startReload();
     });
+    window.addEventListener('wheel', (e) => {
+      if (!document.pointerLockElement) return;
+      const order = [1, 2, 3];
+      const idx = order.indexOf(this.currentSlotNum);
+      const dir = e.deltaY > 0 ? 1 : -1;
+      const next = order[(idx + dir + order.length) % order.length];
+      this.switchSlot(next);
+    }, { passive: true });
   }
 
   get current() {
@@ -266,6 +316,7 @@ export class WeaponSystem {
           const headshot = hits[0].object === zombie.mesh.userData.parts.head;
           const dmg = (headshot ? damage * 2 : damage) * this.getDamageMultiplier();
           const died = zombie.takeDamage(dmg);
+          audio.playZombieHit();
           if (died && this.onKill) this.onKill(zombie, headshot);
           this._spawnImpact(endPoint);
         }
@@ -281,13 +332,12 @@ export class WeaponSystem {
   _spawnTracer(start, end) {
     const dist = start.distanceTo(end);
     if (dist < 0.05) return;
-    const geo = new THREE.CylinderGeometry(0.012, 0.012, dist, 5, 1, true);
-    geo.translate(0, dist / 2, 0);
-    geo.rotateX(Math.PI / 2);
     const mat = new THREE.MeshBasicMaterial({ color: 0xfff6c9, transparent: true, opacity: 0.9, depthWrite: false });
-    const mesh = new THREE.Mesh(geo, mat);
+    const mesh = new THREE.Mesh(TRACER_GEOMETRY, mat);
+    mesh.scale.set(1, dist, 1);
     mesh.position.copy(start);
-    mesh.lookAt(end);
+    const dir = new THREE.Vector3().subVectors(end, start).normalize();
+    mesh.quaternion.setFromUnitVectors(UP_AXIS, dir);
     this.effectsGroup.add(mesh);
     this.effects.push({ kind: 'tracer', mesh, life: 0.09, maxLife: 0.09 });
   }
@@ -295,9 +345,9 @@ export class WeaponSystem {
   _spawnImpact(point) {
     const count = 5 + Math.floor(Math.random() * 3);
     for (let i = 0; i < count; i++) {
-      const geo = new THREE.OctahedronGeometry(0.035 + Math.random() * 0.03, 0);
       const mat = new THREE.MeshBasicMaterial({ color: 0x9dff3c, transparent: true, opacity: 1 });
-      const mesh = new THREE.Mesh(geo, mat);
+      const mesh = new THREE.Mesh(IMPACT_GEOMETRY, mat);
+      mesh.scale.setScalar(0.7 + Math.random() * 0.6);
       mesh.position.copy(point);
       this.effectsGroup.add(mesh);
       const velocity = new THREE.Vector3(
@@ -315,8 +365,7 @@ export class WeaponSystem {
       fx.life -= delta;
       if (fx.life <= 0) {
         this.effectsGroup.remove(fx.mesh);
-        fx.mesh.geometry.dispose();
-        fx.mesh.material.dispose();
+        fx.mesh.material.dispose(); // geometry is shared — do not dispose it here
         this.effects.splice(i, 1);
         continue;
       }
@@ -412,7 +461,7 @@ export class WeaponSystem {
       reloadTilt = dipCurve * 0.55;
     }
 
-    this.anchor.position.set(0.32 + sway, -0.28 - this.recoil * 0.4 - reloadDip, -0.55 + this.recoil * 0.15);
+    this.anchor.position.set(0.26 + sway, -0.24 - this.recoil * 0.4 - reloadDip, -0.45 + this.recoil * 0.15);
     this.anchor.rotation.x = -this.recoil * 1.4 + reloadTilt * 0.5;
     this.anchor.rotation.z = reloadTilt * 0.4;
   }

@@ -111,6 +111,31 @@ class AudioManager {
     osc.start(t); osc.stop(t + 0.75);
   }
 
+  playZombieHit() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const src = this._noiseSource();
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1400, t);
+    filter.frequency.exponentialRampToValueAtTime(250, t + 0.09);
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    src.connect(filter); filter.connect(gain); gain.connect(this.master);
+    src.start(t); src.stop(t + 0.1);
+
+    const pop = this.ctx.createOscillator();
+    pop.type = 'sine';
+    pop.frequency.setValueAtTime(300, t);
+    pop.frequency.exponentialRampToValueAtTime(140, t + 0.07);
+    const popGain = this.ctx.createGain();
+    popGain.gain.setValueAtTime(0.15, t);
+    popGain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+    pop.connect(popGain); popGain.connect(this.master);
+    pop.start(t); pop.stop(t + 0.08);
+  }
+
   playZombieDeath() {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;

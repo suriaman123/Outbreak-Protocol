@@ -37,7 +37,8 @@ export class Player {
 
     // viewmodel holder (weapon meshes attach here)
     this.weaponAnchor = new THREE.Group();
-    this.weaponAnchor.position.set(0.32, -0.28, -0.55);
+    this.weaponAnchor.position.set(0.26, -0.24, -0.45);
+    this.weaponAnchor.scale.setScalar(1.35);
     camera.add(this.weaponAnchor);
 
     this._bindKeys();

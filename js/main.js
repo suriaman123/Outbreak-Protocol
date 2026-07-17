@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { buildWorld, WORLD_SIZE } from './world.js';
 import { Player } from './player.js';
 import { PRIMARY_WEAPONS, SECONDARY_WEAPONS, MELEE_WEAPONS } from './weapons.js';
@@ -135,14 +138,29 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(78, window.innerWidth / window.innerHeight, 0.1, 500);
+scene.add(camera); // REQUIRED: the weapon viewmodel is parented to the camera, so the
+                    // camera must be part of the scene graph or the renderer never finds it
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.55,  // strength
+  0.4,   // radius
+  0.82   // threshold — only genuinely bright things (muzzle flash, tracers, eyes) bloom
+);
+composer.addPass(bloomPass);
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
 });
 
 let worldData = null;
@@ -556,5 +574,5 @@ function animate() {
   if (progression && !state.gameOver) progression.tick();
   if (player && !state.gameOver) updateHealthUI();
 
-  renderer.render(scene, camera);
+  composer.render();
 }
