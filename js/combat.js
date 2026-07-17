@@ -20,106 +20,241 @@ function findZombieFromHit(object) {
   return null;
 }
 
-// ---- procedural viewmodel builders: distinct silhouette per weapon id ----
+// ---- procedural viewmodel builders: distinct, more detailed silhouette per weapon id ----
 function buildViewmodel(weapon) {
   const g = new THREE.Group();
-  const metal = new THREE.MeshStandardMaterial({ color: 0x2b2f27, roughness: 0.45, metalness: 0.6 });
-  const darkGrip = new THREE.MeshStandardMaterial({ color: 0x17150f, roughness: 0.8 });
-  const wood = new THREE.MeshStandardMaterial({ color: 0x5a3d22, roughness: 0.7 });
+
+  // materials — separated into a matte gunmetal body, darker polymer furniture,
+  // and a brighter accent metal for small hardware, plus a tiny glowing sight bead
+  const gunmetal = new THREE.MeshStandardMaterial({ color: 0x24261f, roughness: 0.42, metalness: 0.75 });
+  const polymer = new THREE.MeshStandardMaterial({ color: 0x1a1c16, roughness: 0.6, metalness: 0.2 });
+  const accent = new THREE.MeshStandardMaterial({ color: 0x44473c, roughness: 0.3, metalness: 0.85 });
+  const wood = new THREE.MeshStandardMaterial({ color: 0x5a3d22, roughness: 0.65, metalness: 0.05 });
+  const woodDark = new THREE.MeshStandardMaterial({ color: 0x3e2a17, roughness: 0.7, metalness: 0.05 });
+  const steel = new THREE.MeshStandardMaterial({ color: 0xd7ded4, roughness: 0.2, metalness: 0.85 });
+  const sightGlow = new THREE.MeshStandardMaterial({ color: 0x9dff3c, emissive: 0x9dff3c, emissiveIntensity: 1.6, roughness: 0.4 });
+
+  const halfGuard = () => new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.006, 6, 10, Math.PI * 1.3), accent);
+  const sightPost = (h) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.012, h, 0.012), accent);
+    return m;
+  };
+  const sightBead = () => new THREE.Mesh(new THREE.SphereGeometry(0.008, 6, 6), sightGlow);
 
   let muzzleZ = -0.4;
 
   switch (weapon.id) {
     case 'smg': {
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.14, 0.5), metal);
-      const mag = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.22, 0.08), darkGrip);
-      mag.position.set(0, -0.16, 0.05);
-      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.2, 0.07), darkGrip);
-      grip.position.set(0, -0.14, 0.16);
-      g.add(body, mag, grip);
-      muzzleZ = -0.28;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.46), gunmetal);
+      const lowerReceiver = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.06, 0.2), polymer);
+      lowerReceiver.position.set(0, -0.09, 0.08);
+      const mag = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.22, 0.07), polymer);
+      mag.position.set(0, -0.2, 0.06);
+      mag.rotation.x = -0.12;
+      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.058, 0.19, 0.065), polymer);
+      grip.position.set(0, -0.13, 0.19);
+      grip.rotation.x = 0.22;
+      const stockArm = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 0.24), accent);
+      stockArm.position.set(0, -0.02, 0.36);
+      const stockPlate = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.1, 0.02), polymer);
+      stockPlate.position.set(0, -0.03, 0.47);
+      const guard = halfGuard();
+      guard.rotation.z = Math.PI;
+      guard.position.set(0, -0.1, 0.14);
+      const frontSight = sightPost(0.035);
+      frontSight.position.set(0, 0.09, -0.22);
+      const bead = sightBead();
+      bead.position.set(0, 0.108, -0.22);
+      g.add(body, lowerReceiver, mag, grip, stockArm, stockPlate, guard, frontSight, bead);
+      muzzleZ = -0.26;
       break;
     }
     case 'rifle': {
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.13, 0.72), metal);
-      const stock = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.1, 0.22), darkGrip);
-      stock.position.set(0, -0.02, 0.42);
-      const mag = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.2, 0.08), darkGrip);
-      mag.position.set(0, -0.15, 0.02);
-      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.2, 8), metal);
+      const upperReceiver = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.1, 0.5), gunmetal);
+      upperReceiver.position.set(0, 0.02, -0.05);
+      const lowerReceiver = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.09, 0.24), polymer);
+      lowerReceiver.position.set(0, -0.05, 0.14);
+      const handguard = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.075, 0.26), polymer);
+      handguard.position.set(0, 0.0, -0.33);
+      const stock = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.09, 0.24), polymer);
+      stock.position.set(0, -0.01, 0.4);
+      const mag = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.24, 0.075), polymer);
+      mag.position.set(0, -0.19, 0.05);
+      mag.rotation.x = -0.28;
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.014, 0.22, 8), gunmetal);
       barrel.rotation.x = Math.PI / 2;
-      barrel.position.set(0, 0.01, -0.46);
-      g.add(body, stock, mag, barrel);
-      muzzleZ = -0.56;
+      barrel.position.set(0, 0.02, -0.54);
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.05, 0.02), accent);
+      handle.position.set(0, 0.09, -0.12);
+      const guard = halfGuard();
+      guard.rotation.z = Math.PI;
+      guard.position.set(0, -0.06, 0.1);
+      const frontSight = sightPost(0.05);
+      frontSight.position.set(0, 0.1, -0.46);
+      const bead = sightBead();
+      bead.position.set(0, 0.125, -0.46);
+      const rearSight = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.015), accent);
+      rearSight.position.set(0, 0.09, 0.02);
+      g.add(upperReceiver, lowerReceiver, handguard, stock, mag, barrel, handle, guard, frontSight, bead, rearSight);
+      muzzleZ = -0.64;
       break;
     }
     case 'shotgun': {
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.65, 8), metal);
-      body.rotation.x = Math.PI / 2;
-      const pump = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.14), wood);
-      pump.position.set(0, -0.05, -0.1);
-      const stock = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.1, 0.2), wood);
-      stock.position.set(0, -0.01, 0.4);
-      g.add(body, pump, stock);
-      muzzleZ = -0.5;
+      const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.22), gunmetal);
+      receiver.position.set(0, 0, 0.08);
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.46, 10), gunmetal);
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0, 0.025, -0.24);
+      const tubeMag = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.42, 8), accent);
+      tubeMag.rotation.x = Math.PI / 2;
+      tubeMag.position.set(0, -0.045, -0.24);
+      const pump = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.06, 0.12), woodDark);
+      pump.position.set(0, -0.04, -0.14);
+      const stock = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.1, 0.24), wood);
+      stock.position.set(0, -0.005, 0.36);
+      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.06), wood);
+      grip.position.set(0, -0.09, 0.2);
+      grip.rotation.x = 0.3;
+      const bead = sightBead();
+      bead.position.set(0, 0.06, -0.46);
+      g.add(receiver, barrel, tubeMag, pump, stock, grip, bead);
+      muzzleZ = -0.48;
       break;
     }
     case 'pistol': {
-      const slide = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.32), metal);
-      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.16, 0.09), darkGrip);
-      grip.position.set(0, -0.12, 0.11);
-      g.add(slide, grip);
-      muzzleZ = -0.2;
+      const slide = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.09, 0.28), gunmetal);
+      slide.position.set(0, 0.03, -0.04);
+      // slide serrations
+      for (let i = 0; i < 4; i++) {
+        const groove = new THREE.Mesh(new THREE.BoxGeometry(0.058, 0.09, 0.006), accent);
+        groove.position.set(0, 0.03, 0.08 + i * 0.012);
+        g.add(groove);
+      }
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.07, 0.2), polymer);
+      frame.position.set(0, -0.03, 0.02);
+      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.15, 0.085), polymer);
+      grip.position.set(0, -0.13, 0.1);
+      grip.rotation.x = 0.28;
+      const trigger = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.03, 0.012), accent);
+      trigger.position.set(0, -0.05, -0.02);
+      const guard = halfGuard();
+      guard.rotation.z = Math.PI;
+      guard.scale.setScalar(0.7);
+      guard.position.set(0, -0.06, -0.01);
+      const hammer = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.025, 0.012), accent);
+      hammer.position.set(0, 0.08, 0.13);
+      const frontSight = sightPost(0.02);
+      frontSight.position.set(0, 0.085, -0.17);
+      const bead = sightBead();
+      bead.position.set(0, 0.098, -0.17);
+      g.add(slide, frame, grip, trigger, guard, hammer, frontSight, bead);
+      muzzleZ = -0.18;
       break;
     }
     case 'revolver': {
-      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.3, 8), metal);
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.026, 0.28, 8), gunmetal);
       barrel.rotation.x = Math.PI / 2;
-      const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.08, 10), metal);
+      barrel.position.set(0, 0.01, -0.12);
+      const underlug = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.02, 0.2), gunmetal);
+      underlug.position.set(0, -0.015, -0.14);
+      const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.09, 12), steel);
       cylinder.rotation.x = Math.PI / 2;
-      cylinder.position.z = 0.07;
-      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.16, 0.09), wood);
-      grip.position.set(0, -0.12, 0.14);
-      g.add(barrel, cylinder, grip);
-      muzzleZ = -0.16;
+      cylinder.position.z = 0.06;
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.09, 0.12), gunmetal);
+      frame.position.set(0, 0, 0.1);
+      const gripL = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.15, 0.09), wood);
+      gripL.position.set(0.017, -0.12, 0.16);
+      gripL.rotation.x = 0.3;
+      const gripR = gripL.clone();
+      gripR.position.x = -0.017;
+      const hammer = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.03, 0.015), accent);
+      hammer.position.set(0, 0.075, 0.2);
+      const guard = halfGuard();
+      guard.rotation.z = Math.PI;
+      guard.position.set(0, -0.05, 0.09);
+      g.add(barrel, underlug, cylinder, frame, gripL, gripR, hammer, guard);
+      muzzleZ = -0.24;
       break;
     }
     case 'machinepistol': {
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.11, 0.28), metal);
-      const mag = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, 0.06), darkGrip);
-      mag.position.set(0, -0.13, 0.02);
-      g.add(body, mag);
-      muzzleZ = -0.16;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.1, 0.24), gunmetal);
+      const mag = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.2, 0.055), polymer);
+      mag.position.set(0, -0.15, 0.01);
+      mag.rotation.x = -0.1;
+      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.12, 0.065), polymer);
+      grip.position.set(0, -0.09, 0.11);
+      grip.rotation.x = 0.25;
+      const foldStock = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.14), accent);
+      foldStock.position.set(0, -0.01, 0.22);
+      const frontSight = sightPost(0.025);
+      frontSight.position.set(0, 0.07, -0.11);
+      const bead = sightBead();
+      bead.position.set(0, 0.08, -0.11);
+      g.add(body, mag, grip, foldStock, frontSight, bead);
+      muzzleZ = -0.14;
       break;
     }
     case 'knife': {
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.03, 0.28), new THREE.MeshStandardMaterial({ color: 0xc9d2c6, roughness: 0.25, metalness: 0.8 }));
-      blade.position.z = -0.1;
-      const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.14, 8), darkGrip);
+      const bladeShape = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.3, 4), steel);
+      bladeShape.rotation.x = -Math.PI / 2;
+      bladeShape.rotation.z = Math.PI / 4;
+      bladeShape.scale.set(1, 1, 0.35);
+      bladeShape.position.set(0, 0, -0.14);
+      const spine = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.02, 0.24), steel);
+      spine.position.set(0, 0, -0.12);
+      const guard = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.014, 0.02), accent);
+      guard.position.z = 0.02;
+      const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.02, 0.16, 8), polymer);
       handle.rotation.x = Math.PI / 2;
-      handle.position.z = 0.08;
-      g.add(blade, handle);
+      handle.position.z = 0.11;
+      const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 8), accent);
+      pommel.position.z = 0.19;
+      g.add(bladeShape, spine, guard, handle, pommel);
       break;
     }
     case 'bat': {
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.04, 0.6, 8), wood);
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.045, 0.62, 10), wood);
       shaft.rotation.x = Math.PI / 2.3;
       shaft.position.set(0, -0.02, -0.05);
-      g.add(shaft);
+      const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.026, 0.16, 8), polymer);
+      grip.rotation.x = Math.PI / 2.3;
+      grip.position.set(0, -0.09, 0.22);
+      // wrapped grip tape ridges
+      for (let i = 0; i < 5; i++) {
+        const ridge = new THREE.Mesh(new THREE.TorusGeometry(0.025, 0.004, 6, 8), accent);
+        ridge.rotation.x = Math.PI / 2.3;
+        ridge.position.set(0, -0.09 - i * 0.006, 0.18 + i * 0.028);
+        g.add(ridge);
+      }
+      // nails for a "spiked" look
+      for (let i = 0; i < 4; i++) {
+        const nail = new THREE.Mesh(new THREE.ConeGeometry(0.008, 0.03, 5), accent);
+        nail.position.set((Math.random() - 0.5) * 0.03, -0.05 - i * 0.09, -0.25 + i * 0.09);
+        nail.rotation.z = Math.random() * Math.PI;
+        g.add(nail);
+      }
+      g.add(shaft, grip);
       break;
     }
     case 'axe': {
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.02, 0.5, 8), wood);
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.02, 0.52, 8), wood);
       shaft.rotation.x = Math.PI / 2.3;
       shaft.position.set(0, -0.02, -0.02);
-      const head = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.14, 4), metal);
+      const head = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.15, 4), gunmetal);
       head.rotation.z = Math.PI / 2;
-      head.position.set(0.02, 0.16, -0.24);
-      g.add(shaft, head);
+      head.scale.set(1, 1, 0.55);
+      head.position.set(0.02, 0.17, -0.25);
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.08, 4), gunmetal);
+      spike.rotation.z = -Math.PI / 2;
+      spike.position.set(0.02, 0.17, -0.13);
+      const lashing = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.006, 6, 8), accent);
+      lashing.rotation.x = Math.PI / 2.3;
+      lashing.position.set(0, 0.13, -0.19);
+      g.add(shaft, head, spike, lashing);
       break;
     }
     default: {
-      g.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.4), metal));
+      g.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.4), gunmetal));
     }
   }
 
@@ -161,6 +296,8 @@ export class WeaponSystem {
     this.bobT = 0;
     this.firing = false;
     this.triggerHeld = false;
+    this.swingT = null;
+    this.swingDuration = 0.28;
 
     this._muzzleLight = new THREE.PointLight(0xfff2c0, 0, 4);
     weaponAnchor.add(this._muzzleLight);
@@ -246,6 +383,7 @@ export class WeaponSystem {
     this.currentSlotNum = n;
     const rt = this.current;
     rt.mesh.visible = true;
+    this.swingT = null;
     document.querySelectorAll('.slot').forEach(el => el.classList.toggle('active', Number(el.dataset.slot) === n));
     document.getElementById('weapon-name').textContent = rt.data.name;
     this._updateAmmoHUD();
@@ -289,7 +427,11 @@ export class WeaponSystem {
     this.recoil = Math.min(this.recoil + amount, 0.35);
   }
 
-  _doHitscan(pelletCount, damage, spread, range) {
+  _triggerSwing() {
+    this.swingT = 0;
+  }
+
+  _doHitscan(pelletCount, damage, spread, range, spawnTracer = true) {
     let hitAny = false;
     const originVec = new THREE.Vector3();
     this.camera.getWorldPosition(originVec);
@@ -324,7 +466,7 @@ export class WeaponSystem {
         endPoint = originVec.clone().addScaledVector(dir, range);
       }
 
-      this._spawnTracer(muzzleOrigin, endPoint);
+      if (spawnTracer) this._spawnTracer(muzzleOrigin, endPoint);
     }
     return hitAny;
   }
@@ -386,9 +528,9 @@ export class WeaponSystem {
     if (data.slot === 'melee') {
       if (rt.cooldown > 0) return;
       rt.cooldown = 1 / data.fireRate;
-      this._applyRecoil(0.12);
+      this._triggerSwing();
       audio.playMeleeSwing();
-      const hit = this._doHitscan(1, data.damage, 0.02, data.range);
+      const hit = this._doHitscan(1, data.damage, 0.02, data.range, false); // no bullet tracer for melee
       if (hit && this.hud) this.hud.flashHitmarker();
       return;
     }
@@ -461,8 +603,27 @@ export class WeaponSystem {
       reloadTilt = dipCurve * 0.55;
     }
 
-    this.anchor.position.set(0.26 + sway, -0.24 - this.recoil * 0.4 - reloadDip, -0.45 + this.recoil * 0.15);
-    this.anchor.rotation.x = -this.recoil * 1.4 + reloadTilt * 0.5;
-    this.anchor.rotation.z = reloadTilt * 0.4;
+    let swingRotZ = 0, swingRotX = 0, swingPosX = 0, swingPosY = 0;
+    if (this.swingT !== null) {
+      this.swingT += delta;
+      if (this.swingT >= this.swingDuration) {
+        this.swingT = null;
+      } else {
+        const p = this.swingT / this.swingDuration;
+        const arc = Math.sin(p * Math.PI); // 0 -> 1 -> 0, a quick forward-down chop
+        swingRotZ = -arc * 1.1;
+        swingRotX = arc * 0.45;
+        swingPosX = -arc * 0.16;
+        swingPosY = -arc * 0.05;
+      }
+    }
+
+    this.anchor.position.set(
+      0.26 + sway + swingPosX,
+      -0.24 - this.recoil * 0.4 - reloadDip + swingPosY,
+      -0.45 + this.recoil * 0.15
+    );
+    this.anchor.rotation.x = -this.recoil * 1.4 + reloadTilt * 0.5 + swingRotX;
+    this.anchor.rotation.z = reloadTilt * 0.4 + swingRotZ;
   }
 }

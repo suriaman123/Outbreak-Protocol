@@ -16,6 +16,7 @@ import { audio } from './audio.js';
 // GAME STATE
 // ======================================================================
 const isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0 || window.matchMedia('(pointer: coarse)').matches;
+if (isMobile) document.body.classList.add('mobile');
 
 const state = {
   avatar: null,           // 'male' | 'female'

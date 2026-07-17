@@ -336,7 +336,14 @@ html, body {
   box-shadow: 0 0 0 1px rgba(157,255,60,0.25), 0 4px 20px rgba(0,0,0,0.5);
   background: var(--void);
 }
-#minimap-canvas { display: block; }
+#minimap-canvas { display: block; width: 100%; height: 100%; }
+
+/* smaller HUD footprint on touch devices so it doesn't crowd the on-screen controls */
+.mobile #minimap-wrap { width: 92px; height: 92px; margin-top: 6px; }
+.mobile #weapon-name { font-size: 0.92rem; }
+.mobile #ammo-counter { font-size: 1.5rem; }
+.mobile #hud-top-right { top: 12px; right: 16px; }
+.mobile #hud-bottom-right { bottom: 14px; right: 18px; }
 
 #damage-vignette.low-health {
   animation: low-health-pulse 1.6s ease-in-out infinite;
@@ -446,7 +453,7 @@ html, body {
   transition: transform 0.03s linear;
 }
 #touch-fire-btn {
-  position: absolute; right: 30px; bottom: 34px;
+  position: absolute; right: 30px; bottom: 96px;
   width: 84px; height: 84px;
   border-radius: 50%;
   background: rgba(193,39,45,0.25);
@@ -460,7 +467,7 @@ html, body {
 }
 #touch-fire-btn:active { background: rgba(193,39,45,0.5); }
 #touch-reload-btn {
-  position: absolute; right: 34px; bottom: 132px;
+  position: absolute; right: 34px; bottom: 194px;
   width: 54px; height: 54px;
   border-radius: 50%;
   background: rgba(232,228,216,0.08);
@@ -473,7 +480,7 @@ html, body {
   z-index: 2;
 }
 #touch-jump-btn {
-  position: absolute; right: 128px; bottom: 40px;
+  position: absolute; right: 128px; bottom: 102px;
   width: 58px; height: 58px;
   border-radius: 50%;
   background: rgba(232,228,216,0.08);
