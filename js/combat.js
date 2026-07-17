@@ -1,6 +1,20 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { getWeaponById } from './weapons.js';
 import { audio } from './audio.js';
+
+const gltfLoader = new GLTFLoader();
+
+// ---- tuning knobs for imported models: adjust these if a model loads sideways,
+// upside down, oversized, or with its muzzle pointing the wrong way ----
+const IMPORTED_MODEL_TUNING = {
+  '9mm.glb': {
+    targetLength: 0.22,          // real-world-ish length in meters once scaled
+    rotationOffset: new THREE.Euler(0, Math.PI, 0), // rotate to face forward (-Z)
+    positionOffset: new THREE.Vector3(0, 0, 0),      // nudge after centering, if needed
+    muzzleZ: -0.14
+  }
+};
 
 const RAYCASTER = new THREE.Raycaster();
 
@@ -259,6 +273,7 @@ function buildViewmodel(weapon) {
   }
 
   g.userData.muzzleZ = muzzleZ;
+  g.traverse((o) => { if (o.isMesh) o.frustumCulled = false; });
   return g;
 }
 
@@ -278,7 +293,16 @@ export class WeaponSystem {
     this.runtime = {}; // id -> { data, mesh, ammoInMag, ammoReserve, cooldown, reloading, reloadTimer }
     Object.values(this.slots).forEach(id => {
       const data = getWeaponById(id);
-      const mesh = buildViewmodel(data);
+      let mesh;
+      if (data.modelPath) {
+        mesh = new THREE.Group(); // populated asynchronously once the model finishes loading
+        const fileName = data.modelPath.split('/').pop();
+        const tuning = IMPORTED_MODEL_TUNING[fileName];
+        mesh.userData.muzzleZ = tuning ? tuning.muzzleZ : -0.3;
+        this._loadExternalModel(mesh, data);
+      } else {
+        mesh = buildViewmodel(data);
+      }
       mesh.visible = false;
       weaponAnchor.add(mesh);
       this.runtime[id] = {
@@ -345,7 +369,72 @@ export class WeaponSystem {
     anchor.add(leftHand);
   }
 
-  // public hooks for touch/mobile fire button (bypasses the desktop mousedown gate)
+  // Loads an external .glb, normalizes its scale/orientation to fit our viewmodel
+  // anchor, strips any leftover backdrop geometry from the source scene, and tones
+  // down overly-hot baked emissive materials (common in Sketchfab exports).
+  _loadExternalModel(group, data) {
+    const fileName = data.modelPath.split('/').pop();
+    const tuning = IMPORTED_MODEL_TUNING[fileName] || {
+      targetLength: 0.24,
+      rotationOffset: new THREE.Euler(0, 0, 0),
+      positionOffset: new THREE.Vector3(0, 0, 0),
+      muzzleZ: -0.3
+    };
+
+    gltfLoader.load(
+      data.modelPath,
+      (gltf) => {
+        const model = gltf.scene;
+
+        // remove known non-weapon leftovers from the source scene (e.g. a Sketchfab
+        // viewer backdrop plane) if present
+        const stray = model.getObjectByName('Plane001');
+        if (stray && stray.parent) stray.parent.remove(stray);
+
+        // normalize to a realistic real-world size regardless of the source file's units
+        const box = new THREE.Box3().setFromObject(model);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z) || 1;
+        const scale = tuning.targetLength / maxDim;
+        model.scale.setScalar(scale);
+
+        // re-center after scaling so it rotates/positions predictably in the anchor
+        const box2 = new THREE.Box3().setFromObject(model);
+        const center = new THREE.Vector3();
+        box2.getCenter(center);
+        model.position.sub(center);
+        model.position.add(tuning.positionOffset);
+        model.rotation.copy(tuning.rotationOffset);
+
+        model.traverse((o) => {
+          if (!o.isMesh) return;
+          o.castShadow = false;
+          o.receiveShadow = false;
+          o.frustumCulled = false; // viewmodel is camera-relative; never let it get culled
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          mats.forEach((m) => {
+            if (!m) return;
+            // several Sketchfab exports bake a very hot emissive strength (10x) meant
+            // for their own preview shader — tone it down for normal scene lighting
+            if (m.emissiveIntensity !== undefined && m.emissiveIntensity > 1) {
+              m.emissiveIntensity = 0.5;
+            }
+          });
+        });
+
+        group.add(model);
+        group.userData.muzzleZ = tuning.muzzleZ;
+      },
+      undefined,
+      (err) => {
+        console.error(`Failed to load weapon model "${data.modelPath}", using procedural fallback.`, err);
+        const fallback = buildViewmodel(data);
+        while (fallback.children.length) group.add(fallback.children[0]);
+        group.userData.muzzleZ = fallback.userData.muzzleZ;
+      }
+    );
+  }
   startFiring() { this.firing = true; }
   stopFiring() { this.firing = false; }
 

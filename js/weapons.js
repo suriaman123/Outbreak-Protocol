@@ -62,7 +62,8 @@ export const SECONDARY_WEAPONS = [
     spread: 0.02,
     range: 35,
     auto: false,
-    desc: 'STEADY BACKUP'
+    desc: 'STEADY BACKUP',
+    modelPath: 'assets/9mm.glb'
   },
   {
     id: 'revolver',
