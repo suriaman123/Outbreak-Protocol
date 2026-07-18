@@ -1,13 +1,14 @@
 // ==========================================================
-// Weapon data. Stats are balanced against BASE_ZOMBIE_HEALTH (see zombies.js, chunk 2).
-// dps is informational (shown in menu), actual fire logic arrives in chunk 2.
+// Weapon data. Stats are balanced against BASE_ZOMBIE_HEALTH (see zombies.js).
+// modelPath, when present, points to a real .glb loaded and normalized in combat.js;
+// weapons without one fall back to the procedural viewmodel builder.
 // ==========================================================
 
 export const PRIMARY_WEAPONS = [
   {
     id: 'smg',
     slot: 'primary',
-    name: 'VIPER SMG',
+    name: 'TOMMY GUN',
     damage: 14,
     fireRate: 9,      // rounds per second
     magSize: 30,
@@ -16,12 +17,13 @@ export const PRIMARY_WEAPONS = [
     spread: 0.035,
     range: 40,
     auto: true,
-    desc: 'HIGH ROF / LOW DMG'
+    desc: 'HIGH ROF / LOW DMG',
+    modelPath: 'assets/tommy_gun.glb'
   },
   {
     id: 'rifle',
     slot: 'primary',
-    name: 'AR-15 CARBINE',
+    name: 'AK-47',
     damage: 26,
     fireRate: 6,
     magSize: 25,
@@ -30,7 +32,8 @@ export const PRIMARY_WEAPONS = [
     spread: 0.018,
     range: 60,
     auto: true,
-    desc: 'BALANCED / RELIABLE'
+    desc: 'BALANCED / RELIABLE',
+    modelPath: 'assets/ak47.glb'
   },
   {
     id: 'shotgun',
@@ -53,7 +56,7 @@ export const SECONDARY_WEAPONS = [
   {
     id: 'pistol',
     slot: 'secondary',
-    name: 'M9 SIDEARM',
+    name: 'MAKAROV PM',
     damage: 20,
     fireRate: 4,
     magSize: 15,
@@ -63,7 +66,7 @@ export const SECONDARY_WEAPONS = [
     range: 35,
     auto: false,
     desc: 'STEADY BACKUP',
-    modelPath: 'assets/9mm.glb'
+    modelPath: 'assets/makarov.glb'
   },
   {
     id: 'revolver',
@@ -106,22 +109,34 @@ export const MELEE_WEAPONS = [
     desc: 'FAST / SILENT'
   },
   {
-    id: 'bat',
+    id: 'sledgehammer',
     slot: 'melee',
-    name: 'SPIKED BAT',
-    damage: 55,
-    fireRate: 1.3,
-    range: 2.5,
-    desc: 'CROWD CONTROL'
+    name: 'SLEDGEHAMMER',
+    damage: 70,
+    fireRate: 0.8,
+    range: 2.6,
+    desc: 'CRUSHING / SLOW',
+    modelPath: 'assets/sledgehammer.glb'
   },
   {
     id: 'axe',
     slot: 'melee',
-    name: 'FIRE AXE',
+    name: 'COMBAT AXE',
     damage: 80,
     fireRate: 0.9,
     range: 2.6,
-    desc: 'HEAVY / LETHAL'
+    desc: 'HEAVY / LETHAL',
+    modelPath: 'assets/axe.glb'
+  },
+  {
+    id: 'scythe',
+    slot: 'melee',
+    name: "REAPER'S SCYTHE",
+    damage: 95,
+    fireRate: 0.7,
+    range: 3.0,
+    desc: 'LONG REACH / BRUTAL',
+    modelPath: 'assets/scythe.glb'
   }
 ];
 

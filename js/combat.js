@@ -8,13 +8,65 @@ const gltfLoader = new GLTFLoader();
 // ---- tuning knobs for imported models: adjust these if a model loads sideways,
 // upside down, oversized, or with its muzzle pointing the wrong way ----
 const IMPORTED_MODEL_TUNING = {
-  '9mm.glb': {
-    targetLength: 0.22,          // real-world-ish length in meters once scaled
-    rotationOffset: new THREE.Euler(0, Math.PI, 0), // rotate to face forward (-Z)
-    positionOffset: new THREE.Vector3(0, 0, 0),      // nudge after centering, if needed
-    muzzleZ: -0.14
+  'tommy_gun.glb': {
+    targetLength: 0.78,
+    rotationOffset: new THREE.Euler(0, Math.PI, 0),
+    positionOffset: new THREE.Vector3(0, 0, 0),
+    muzzleZ: -0.35
+  },
+  'ak47.glb': {
+    targetLength: 0.87,
+    rotationOffset: new THREE.Euler(0, Math.PI, 0),
+    positionOffset: new THREE.Vector3(0, 0, 0),
+    muzzleZ: -0.39
+  },
+  'makarov.glb': {
+    targetLength: 0.16,
+    rotationOffset: new THREE.Euler(0, Math.PI, 0),
+    positionOffset: new THREE.Vector3(0, 0, 0),
+    muzzleZ: -0.07
+  },
+  'axe.glb': {
+    targetLength: 0.6,
+    rotationOffset: new THREE.Euler(0, Math.PI, 0),
+    positionOffset: new THREE.Vector3(0, 0, 0),
+    muzzleZ: -0.3
+  },
+  'scythe.glb': {
+    targetLength: 1.3,
+    rotationOffset: new THREE.Euler(0, Math.PI, 0),
+    positionOffset: new THREE.Vector3(0, 0, 0),
+    muzzleZ: -0.3
+  },
+  'sledgehammer.glb': {
+    targetLength: 0.75,
+    rotationOffset: new THREE.Euler(0, Math.PI, 0),
+    positionOffset: new THREE.Vector3(0, 0, 0),
+    muzzleZ: -0.3
   }
 };
+
+// ---- hand-arm placement: right hand always grips the trigger/handle; left hand only
+// shows up on two-handed weapons (long guns + big melee) as a forward support hand.
+// Positions are computed relative to each weapon's own muzzleZ so longer weapons
+// automatically get a further-forward support hand. Adjust the multipliers below,
+// or add a per-weapon-id override to HAND_OVERRIDES, if a grip looks off. ----
+const TWO_HANDED_IDS = new Set(['smg', 'rifle', 'shotgun', 'axe', 'sledgehammer', 'scythe']);
+const HAND_OVERRIDES = {}; // e.g. pistol: { right: { position: new THREE.Vector3(...), rotation: new THREE.Euler(...) } }
+
+function computeHandPose(weaponData, muzzleZ) {
+  if (HAND_OVERRIDES[weaponData.id]) return HAND_OVERRIDES[weaponData.id];
+  const right = {
+    position: new THREE.Vector3(0.045, -0.13, muzzleZ * 0.15),
+    rotation: new THREE.Euler(0.35, 0.15, -0.15)
+  };
+  if (!TWO_HANDED_IDS.has(weaponData.id)) return { right, left: null };
+  const left = {
+    position: new THREE.Vector3(-0.03, -0.06, muzzleZ * 0.55),
+    rotation: new THREE.Euler(-0.8, -0.15, 0.25)
+  };
+  return { right, left };
+}
 
 const RAYCASTER = new THREE.Raycaster();
 
@@ -332,7 +384,8 @@ export class WeaponSystem {
     viewmodelFill.position.set(0.1, 0.4, 0.3);
     weaponAnchor.add(viewmodelFill);
 
-    this._buildArms(weaponAnchor);
+    this._buildArms(weaponAnchor); // instant fallback, hidden once the real hand model loads
+    this._loadHandArm(weaponAnchor);
 
     this.effects = []; // active tracers + impact particles, in world space
     this.effectsGroup = new THREE.Group();
@@ -342,31 +395,103 @@ export class WeaponSystem {
     this.switchSlot(1);
   }
 
-  // low-poly forearms + hands gripping the weapon, always visible regardless of
-  // which weapon is equipped — this is what actually sells "a gun in my hands"
+  // low-poly forearms + hands — instant placeholder shown until the real scanned
+  // hand-arm model finishes loading, then hidden.
   _buildArms(anchor) {
     const skin = new THREE.MeshStandardMaterial({ color: 0xc99270, roughness: 0.85 });
     const sleeve = new THREE.MeshStandardMaterial({ color: 0x2e3427, roughness: 0.9 });
+    const group = new THREE.Group();
 
     const rightForearm = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.05, 0.5, 8), sleeve);
     rightForearm.position.set(0.08, -0.28, 0.28);
     rightForearm.rotation.set(1.15, 0.15, -0.25);
-    anchor.add(rightForearm);
+    group.add(rightForearm);
 
     const rightHand = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.08, 0.12), skin);
     rightHand.position.set(0.03, -0.1, 0.02);
     rightHand.rotation.set(0.3, 0.1, -0.1);
-    anchor.add(rightHand);
+    group.add(rightHand);
 
     const leftForearm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.45, 8), sleeve);
     leftForearm.position.set(-0.05, -0.22, -0.28);
     leftForearm.rotation.set(-0.9, -0.2, 0.3);
-    anchor.add(leftForearm);
+    group.add(leftForearm);
 
     const leftHand = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.07, 0.1), skin);
     leftHand.position.set(-0.02, -0.08, -0.42);
     leftHand.rotation.set(0.2, -0.1, 0.15);
-    anchor.add(leftHand);
+    group.add(leftHand);
+
+    anchor.add(group);
+    this.fallbackArmsGroup = group;
+  }
+
+  // Loads the (pre-decimated, pre-scaled-to-meters) hand-arm scan once, then clones
+  // it into a right-hand and a mirrored left-hand slot. Both slots are repositioned
+  // per weapon in _applyHandPose() so the grip roughly follows whatever's equipped.
+  _loadHandArm(anchor) {
+    this.rightHandSlot = new THREE.Group();
+    this.leftHandSlot = new THREE.Group();
+    anchor.add(this.rightHandSlot, this.leftHandSlot);
+    this.rightHandSlot.visible = false;
+    this.leftHandSlot.visible = false;
+
+    gltfLoader.load(
+      'assets/hand_arm.glb',
+      (gltf) => {
+        const template = gltf.scene;
+        const box = new THREE.Box3().setFromObject(template);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z) || 1;
+        const scale = 0.42 / maxDim; // forearm+hand, tip to tip
+        template.scale.setScalar(scale);
+
+        const box2 = new THREE.Box3().setFromObject(template);
+        const center = new THREE.Vector3();
+        box2.getCenter(center);
+        template.position.sub(center);
+
+        template.traverse((o) => {
+          if (!o.isMesh) return;
+          o.castShadow = false;
+          o.receiveShadow = false;
+          o.frustumCulled = false;
+        });
+
+        const right = template.clone();
+        const left = template.clone();
+        left.scale.x *= -1; // mirror geometry for the left hand
+        this.rightHandSlot.add(right);
+        this.leftHandSlot.add(left);
+
+        if (this.fallbackArmsGroup) this.fallbackArmsGroup.visible = false;
+        this._applyHandPose();
+      },
+      undefined,
+      (err) => {
+        console.error('Failed to load hand-arm model, keeping procedural fallback arms.', err);
+      }
+    );
+  }
+
+  _applyHandPose() {
+    if (!this.rightHandSlot || this.rightHandSlot.children.length === 0) return;
+    const rt = this.current;
+    const muzzleZ = rt.mesh.userData.muzzleZ || -0.3;
+    const pose = computeHandPose(rt.data, muzzleZ);
+
+    this.rightHandSlot.position.copy(pose.right.position);
+    this.rightHandSlot.rotation.copy(pose.right.rotation);
+    this.rightHandSlot.visible = true;
+
+    if (pose.left) {
+      this.leftHandSlot.position.copy(pose.left.position);
+      this.leftHandSlot.rotation.copy(pose.left.rotation);
+      this.leftHandSlot.visible = true;
+    } else {
+      this.leftHandSlot.visible = false;
+    }
   }
 
   // Loads an external .glb, normalizes its scale/orientation to fit our viewmodel
@@ -473,6 +598,7 @@ export class WeaponSystem {
     const rt = this.current;
     rt.mesh.visible = true;
     this.swingT = null;
+    this._applyHandPose();
     document.querySelectorAll('.slot').forEach(el => el.classList.toggle('active', Number(el.dataset.slot) === n));
     document.getElementById('weapon-name').textContent = rt.data.name;
     this._updateAmmoHUD();
