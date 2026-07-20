@@ -10,19 +10,25 @@ const gltfLoader = new GLTFLoader();
 const IMPORTED_MODEL_TUNING = {
   'tommy_gun.glb': {
     targetLength: 0.78,
-    rotationOffset: new THREE.Euler(0, Math.PI, 0),
+    // long axis is local X (not Z); +90 deg about Y maps its muzzle (verified at
+    // local +X) to our forward (-Z) convention. Verified numerically against the
+    // model's actual geometric tip, not guessed.
+    rotationOffset: new THREE.Euler(0, Math.PI / 2, 0),
     positionOffset: new THREE.Vector3(0, 0, 0),
     muzzleZ: -0.35
   },
   'ak47.glb': {
     targetLength: 0.87,
-    rotationOffset: new THREE.Euler(0, Math.PI, 0),
+    // muzzle tip is already at local -Z natively — no flip needed (previous 180deg
+    // flip was pointing it at the camera, hence "backward")
+    rotationOffset: new THREE.Euler(0, 0, 0),
     positionOffset: new THREE.Vector3(0, 0, 0),
     muzzleZ: -0.39
   },
   'makarov.glb': {
     targetLength: 0.16,
-    rotationOffset: new THREE.Euler(0, Math.PI, 0),
+    // same situation as the AK47 — already faces -Z natively
+    rotationOffset: new THREE.Euler(0, 0, 0),
     positionOffset: new THREE.Vector3(0, 0, 0),
     muzzleZ: -0.07
   },
@@ -51,19 +57,31 @@ const IMPORTED_MODEL_TUNING = {
 // Positions are computed relative to each weapon's own muzzleZ so longer weapons
 // automatically get a further-forward support hand. Adjust the multipliers below,
 // or add a per-weapon-id override to HAND_OVERRIDES, if a grip looks off. ----
+// ---- hand-arm placement ----
+// The scanned hand-arm is an unrigged, flat/fingers-together pose (verified by analyzing
+// its geometry: the "hand" end is ~15cm wide and only ~3-5cm thick — flat, not curled
+// into a grip). It can't dynamically wrap around a cylindrical grip the way a rigged
+// hand could; the best we can do without re-sculpting the mesh is position/orient it so
+// the flat palm rests plausibly against the grip's surface. The base rotation below was
+// derived by simulating the model's local axes (Y = forearm->fingers, Z = palm normal,
+// X = width) so fingers point forward and the palm faces inward toward the weapon.
+const HAND_BASE_ROTATION = { x: -Math.PI / 2, y: -Math.PI / 2, z: 0 };
+
 const TWO_HANDED_IDS = new Set(['smg', 'rifle', 'shotgun', 'axe', 'sledgehammer', 'scythe']);
 const HAND_OVERRIDES = {}; // e.g. pistol: { right: { position: new THREE.Vector3(...), rotation: new THREE.Euler(...) } }
 
 function computeHandPose(weaponData, muzzleZ) {
   if (HAND_OVERRIDES[weaponData.id]) return HAND_OVERRIDES[weaponData.id];
   const right = {
-    position: new THREE.Vector3(0.045, -0.13, muzzleZ * 0.15),
-    rotation: new THREE.Euler(0.35, 0.15, -0.15)
+    position: new THREE.Vector3(0.035, -0.15, muzzleZ * 0.2),
+    rotation: new THREE.Euler(HAND_BASE_ROTATION.x, HAND_BASE_ROTATION.y, HAND_BASE_ROTATION.z)
   };
   if (!TWO_HANDED_IDS.has(weaponData.id)) return { right, left: null };
   const left = {
-    position: new THREE.Vector3(-0.03, -0.06, muzzleZ * 0.55),
-    rotation: new THREE.Euler(-0.8, -0.15, 0.25)
+    position: new THREE.Vector3(-0.02, -0.05, muzzleZ * 0.6),
+    // mirrored rotation (opposite Y) so the left hand's palm faces the opposite way,
+    // matching its mirrored (scale.x = -1) geometry
+    rotation: new THREE.Euler(HAND_BASE_ROTATION.x, -HAND_BASE_ROTATION.y, HAND_BASE_ROTATION.z)
   };
   return { right, left };
 }
@@ -524,13 +542,16 @@ export class WeaponSystem {
         const scale = tuning.targetLength / maxDim;
         model.scale.setScalar(scale);
 
-        // re-center after scaling so it rotates/positions predictably in the anchor
+        // IMPORTANT: apply rotation BEFORE measuring the box used to recenter.
+        // Translation and rotation don't commute for off-origin geometry — centering
+        // from the *unrotated* box and then rotating leaves the model displaced
+        // (this was the cause of weapons appearing to float away from the hand).
+        model.rotation.copy(tuning.rotationOffset);
         const box2 = new THREE.Box3().setFromObject(model);
         const center = new THREE.Vector3();
         box2.getCenter(center);
         model.position.sub(center);
         model.position.add(tuning.positionOffset);
-        model.rotation.copy(tuning.rotationOffset);
 
         model.traverse((o) => {
           if (!o.isMesh) return;
